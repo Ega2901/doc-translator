@@ -4,15 +4,39 @@ from pathlib import Path
 
 from doc_translator.processors.word import WordDocumentProcessor
 from doc_translator.processors.pdf import PDFDocumentProcessor
+from doc_translator.processors.pandoc_word import PandocWordProcessor
+from doc_translator.processors.mineru_pdf import MinerUPDFProcessor
+from doc_translator.processors.pandoc_utils import check_pandoc
+from doc_translator.processors.mineru_utils import check_mineru
 from doc_translator.translator.ollama import OllamaTranslator
 
 
-def get_processor(file_path: Path):
+def get_processor(
+    file_path: Path,
+    use_pandoc: bool = False,
+    use_mineru: bool = False,
+):
     suffix = file_path.suffix.lower()
 
     if suffix == ".docx":
+        if use_pandoc:
+            if not check_pandoc():
+                raise ValueError(
+                    "Режим --pandoc требует установленный Pandoc: https://pandoc.org/installing.html"
+                )
+            return PandocWordProcessor()
         return WordDocumentProcessor()
     elif suffix == ".pdf":
+        if use_mineru:
+            if not check_mineru():
+                raise ValueError(
+                    "Режим --mineru требует установленный MinerU: pip install \"mineru[all]\""
+                )
+            if not check_pandoc():
+                raise ValueError(
+                    "Режим --mineru для сборки docx требует Pandoc: https://pandoc.org/installing.html"
+                )
+            return MinerUPDFProcessor()
         return PDFDocumentProcessor()
     else:
         raise ValueError(f"Неподдерживаемый формат файла: {suffix}")
@@ -25,10 +49,18 @@ def cmd_chunk(args: argparse.Namespace) -> int:
         print(f"Ошибка: файл не найден: {input_path}", file=sys.stderr)
         return 1
 
-    processor = get_processor(input_path)
+    processor = get_processor(
+        input_path,
+        use_pandoc=getattr(args, "pandoc", False),
+        use_mineru=getattr(args, "mineru", False),
+    )
     processor.max_chars = args.max_chars
 
     print(f"Разбиваем документ: {input_path}")
+    if getattr(args, "pandoc", False):
+        print("Режим: Pandoc (docx → Markdown)")
+    if getattr(args, "mineru", False):
+        print("Режим: MinerU (PDF → Markdown)")
     print(f"Максимум символов на чанк: {args.max_chars}")
 
     chunks = processor.chunk(input_path)
@@ -59,10 +91,12 @@ def cmd_translate(args: argparse.Namespace) -> int:
         print(f"Ошибка: файл не найден: {input_path}", file=sys.stderr)
         return 1
 
-    translator = OllamaTranslator(
-        model=args.model,
-        base_url=args.ollama_url,
-    )
+    translator_kw = {"model": args.model, "base_url": args.ollama_url}
+    if getattr(args, "timeout", None) is not None:
+        translator_kw["timeout"] = args.timeout
+    if args.pandoc or getattr(args, "mineru", False):
+        translator_kw["use_markdown_prompt"] = True
+    translator = OllamaTranslator(**translator_kw)
 
     if not translator.check_connection():
         print(
@@ -80,12 +114,20 @@ def cmd_translate(args: argparse.Namespace) -> int:
             print("Используйте --force чтобы продолжить")
             return 1
 
-    processor = get_processor(input_path)
+    processor = get_processor(
+        input_path,
+        use_pandoc=args.pandoc,
+        use_mineru=getattr(args, "mineru", False),
+    )
     processor.max_chars = args.max_chars
 
     print(f"Документ: {input_path}")
     print(f"Целевой язык: {args.language}")
     print(f"Модель: {args.model}")
+    if args.pandoc:
+        print("Режим: Pandoc (Markdown ↔ docx со стилями)")
+    if getattr(args, "mineru", False):
+        print("Режим: MinerU (PDF → Markdown → модель → docx)")
     print(f"Максимум символов на чанк: {args.max_chars}")
     print("-" * 50)
 
@@ -164,6 +206,16 @@ def main() -> int:
         default=4000,
         help="Максимум символов на чанк (по умолчанию: 4000)",
     )
+    chunk_parser.add_argument(
+        "--pandoc",
+        action="store_true",
+        help="Использовать Pandoc: docx→Markdown, чанки в строгом формате (требуется pandoc)",
+    )
+    chunk_parser.add_argument(
+        "--mineru",
+        action="store_true",
+        help="Использовать MinerU: PDF→Markdown, корректное извлечение структуры (требуется mineru)",
+    )
 
     translate_parser = subparsers.add_parser("translate", help="Перевести документ")
     translate_parser.add_argument("input", help="Путь к входному документу (.docx или .pdf)")
@@ -188,6 +240,23 @@ def main() -> int:
         "--force",
         action="store_true",
         help="Продолжить даже если модель не найдена",
+    )
+    translate_parser.add_argument(
+        "--pandoc",
+        action="store_true",
+        help="Использовать Pandoc: строгий Markdown для модели и восстановление docx со стилями исходного документа",
+    )
+    translate_parser.add_argument(
+        "--mineru",
+        action="store_true",
+        help="Использовать MinerU для PDF: корректное извлечение в Markdown, затем модель и сборка в docx",
+    )
+    translate_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=120,
+        metavar="SEC",
+        help="Таймаут запроса к Ollama в секундах (по умолчанию: 120)",
     )
 
     subparsers.add_parser("models", help="Показать доступные модели Ollama")

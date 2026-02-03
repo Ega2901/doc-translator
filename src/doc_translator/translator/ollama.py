@@ -1,8 +1,26 @@
 import json
+import re
 import httpx
 from typing import Callable
 
 from doc_translator.models.chunk import Chunk, TranslatedChunk
+
+
+def _strip_thinking_blocks(text: str) -> str:
+    """
+    Удалить из ответа модели блоки рассуждений (think-теги).
+    Некоторые модели (например DeepSeek R1) могут вставлять «мысли» в ответ;
+    для перевода нужен только итоговый текст.
+    """
+    if not text.strip():
+        return text
+    # Удаляем блоки think (рассуждения модели)
+    pattern = re.compile(
+        r" <think>.*?<\/think>",
+        re.DOTALL | re.IGNORECASE,
+    )
+    cleaned = pattern.sub("", text)
+    return cleaned.strip()
 
 
 class OllamaTranslator:
@@ -46,17 +64,31 @@ Your task is to translate the text accurately while:
 
 If you see text formatted as a table (with | separators), preserve that format exactly."""
 
+    # Промпт для формата Markdown (Pandoc): модель должна сохранять разметку 1:1
+    MARKDOWN_SYSTEM_PROMPT = """You are a professional translator. The input is a fragment of a document in Markdown format.
+Translate ONLY the natural language text to the target language. You MUST:
+- Keep all Markdown syntax exactly as in the input: headers (# ## ###), tables (| ... |), lists (- * 1.), bold/italic (** *), code blocks (```), links, etc.
+- Do not add or remove any structural markup; only translate the visible text content.
+- Output valid Markdown with the same structure. Do not add explanations or comments."""
+
     def __init__(
         self,
         model: str = "llama3.2",
         base_url: str = "http://localhost:11434",
         timeout: float = 120.0,
         system_prompt: str | None = None,
+        *,
+        use_markdown_prompt: bool = False,
     ) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self.system_prompt = system_prompt or self.DEFAULT_SYSTEM_PROMPT
+        if system_prompt is not None:
+            self.system_prompt = system_prompt
+        elif use_markdown_prompt:
+            self.system_prompt = self.MARKDOWN_SYSTEM_PROMPT
+        else:
+            self.system_prompt = self.DEFAULT_SYSTEM_PROMPT
         self._client = httpx.Client(timeout=timeout)
 
     def _build_prompt(self, text: str, target_language: str) -> str:
@@ -104,6 +136,7 @@ TRANSLATION:"""
             "prompt": prompt,
             "system": self.system_prompt,
             "stream": progress_callback is not None,
+            "think": False,  # только итоговый ответ, без блоков рассуждений (DeepSeek R1 и др.)
         }
 
         url = f"{self.base_url}/api/generate"
@@ -116,9 +149,11 @@ TRANSLATION:"""
             result = response.json()
             translated_text = result.get("response", "")
 
+        translated_text = _strip_thinking_blocks(translated_text.strip())
+
         return TranslatedChunk(
             original=chunk,
-            translated_text=translated_text.strip(),
+            translated_text=translated_text,
             target_language=target_language,
             model_used=self.model,
         )
