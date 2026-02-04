@@ -1,41 +1,64 @@
-"""
-Общие утилиты для разбиения Markdown на блоки и чанки.
-
-Используются процессорами Pandoc (docx) и MinerU (PDF) для единообразного
-разбиения извлечённого Markdown перед передачей в модель.
-"""
+def _is_table_line(line: str) -> bool:
+    s = line.strip()
+    if not s:
+        return False
+    if s.startswith("+") or s.startswith("=") or (s.startswith("|") and "|" in s[1:]):
+        return True
+    if s.startswith("|"):
+        return True
+    return False
 
 
 def split_markdown_into_blocks(markdown: str) -> list[str]:
-    """
-    Разбить Markdown на блоки по пустым строкам (двойной перевод строки).
-
-    Сохраняет многострочные блоки (таблицы, код) как один блок.
-    """
     if not markdown.strip():
         return []
+    lines = markdown.split("\n")
     blocks = []
     current: list[str] = []
-    for line in markdown.split("\n"):
-        if line.strip() == "":
+    in_table = False
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped == "":
             if current:
-                blocks.append("\n".join(current))
-                current = []
+                if not in_table:
+                    blocks.append("\n".join(current))
+                    current = []
+                    in_table = False
         else:
-            current.append(line)
+            line_is_table = _is_table_line(line)
+            if line_is_table:
+                in_table = True
+                current.append(line)
+            else:
+                if current and in_table:
+                    blocks.append("\n".join(current))
+                    current = []
+                in_table = False
+                current.append(line)
     if current:
         blocks.append("\n".join(current))
-    return blocks
+
+    merged: list[str] = []
+    for block in blocks:
+        block_lines = block.split("\n")
+        first_line = (block_lines[0].strip() if block_lines else "")
+        if merged and _is_table_line(first_line):
+            prev = merged[-1]
+            if _is_table_line((prev.split("\n")[0] or "").strip()):
+                merged[-1] = prev + "\n" + block
+                continue
+        merged.append(block)
+    return merged
 
 
 def chunk_blocks(blocks: list[str], max_chars: int) -> list[list[str]]:
-    """Сгруппировать блоки в чанки, не превышающие max_chars."""
     if not blocks:
         return []
     chunks: list[list[str]] = []
     current: list[str] = []
     current_len = 0
-    sep_len = 2  # "\n\n"
+    sep_len = 2
 
     for block in blocks:
         block_len = len(block) + (sep_len if current else 0)

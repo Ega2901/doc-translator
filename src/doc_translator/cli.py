@@ -177,7 +177,7 @@ def cmd_models(args: argparse.Namespace) -> int:
         for model in models:
             print(f"  - {model}")
     else:
-        print("Модели не найдены. Установите модель: ollama pull llama3.2")
+        print("Модели не найдены. Установите модель: ollama pull translategemma")
 
     translator.close()
     return 0
@@ -222,13 +222,13 @@ def main() -> int:
     translate_parser.add_argument("-o", "--output", help="Путь для сохранения результата")
     translate_parser.add_argument(
         "-l", "--language",
-        default="English",
-        help="Целевой язык (по умолчанию: English)",
+        default="Russian",
+        help="Целевой язык (по умолчанию: Russian)",
     )
     translate_parser.add_argument(
         "-m", "--model",
-        default="llama3.2",
-        help="Модель Ollama для перевода (по умолчанию: llama3.2)",
+        default="translategemma",
+        help="Модель Ollama для перевода (по умолчанию: translategemma)",
     )
     translate_parser.add_argument(
         "--max-chars",
@@ -254,9 +254,9 @@ def main() -> int:
     translate_parser.add_argument(
         "--timeout",
         type=float,
-        default=120,
+        default=600,
         metavar="SEC",
-        help="Таймаут запроса к Ollama в секундах (по умолчанию: 120)",
+        help="Таймаут запроса к Ollama в секундах (по умолчанию: 600, для больших документов)",
     )
 
     subparsers.add_parser("models", help="Показать доступные модели Ollama")

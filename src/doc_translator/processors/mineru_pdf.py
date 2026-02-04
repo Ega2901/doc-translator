@@ -1,11 +1,3 @@
-"""
-Процессор PDF через MinerU: корректное извлечение в Markdown для модели.
-
-Использует MinerU для извлечения PDF в структурированный Markdown (заголовки,
-таблицы, формулы, OCR при необходимости), затем разбиение на чанки и сборка
-результата в docx через Pandoc.
-"""
-
 from pathlib import Path
 
 from doc_translator.models.chunk import Chunk, ElementMetadata, ElementType, TranslatedChunk
@@ -16,26 +8,6 @@ from doc_translator.processors.pandoc_utils import check_pandoc, markdown_to_doc
 
 
 class MinerUPDFProcessor(DocumentProcessor):
-    """
-    Процессор PDF через MinerU: PDF → Markdown (MinerU) → модель → docx (Pandoc).
-
-    MinerU даёт корректное извлечение структуры документа (заголовки, таблицы,
-    формулы, списки, OCR для сканов). Модель получает и возвращает Markdown;
-    результат собирается в docx через Pandoc.
-
-    Parameters
-    ----------
-    max_chars : int, default=4000
-        Максимальное количество символов в одном чанке.
-    mineru_backend : str, default="pipeline"
-        Бэкенд MinerU: "pipeline" (CPU), "hybrid-auto-engine" (точнее, требует ресурсов).
-
-    Raises
-    ------
-    FileNotFoundError
-        Если MinerU или Pandoc не установлены.
-    """
-
     def __init__(
         self,
         max_chars: int = 4000,
@@ -49,20 +21,12 @@ class MinerUPDFProcessor(DocumentProcessor):
         return [".pdf"]
 
     def load(self, path: str | Path) -> str:
-        """Загрузить PDF как Markdown (через MinerU)."""
         return pdf_to_markdown(path, backend=self.mineru_backend)
 
     def save(self, document: str, path: str | Path) -> None:
-        """Сохранить Markdown как docx (через Pandoc)."""
         markdown_to_docx(document, path)
 
     def chunk(self, path: str | Path) -> list[Chunk]:
-        """
-        Разбить PDF на чанки в формате Markdown.
-
-        PDF извлекается в Markdown через MinerU, затем разбивается по блокам
-        с учётом max_chars.
-        """
         if not check_mineru():
             raise FileNotFoundError(
                 "MinerU не найден. Установите: pip install \"mineru[all]\" "
@@ -94,12 +58,6 @@ class MinerUPDFProcessor(DocumentProcessor):
         translated_chunks: list[TranslatedChunk],
         output_path: str | Path,
     ) -> None:
-        """
-        Собрать переведённые чанки в один docx через Pandoc.
-
-        Склеивает Markdown из всех чанков и конвертирует в docx (без reference-doc,
-        т.к. исходник — PDF).
-        """
         if not translated_chunks:
             raise ValueError("Список переведённых чанков пуст")
         if not check_pandoc():

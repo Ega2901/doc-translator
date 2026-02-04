@@ -13,65 +13,13 @@ from doc_translator.processors.base import DocumentProcessor
 
 
 class WordDocumentProcessor(DocumentProcessor):
-    """
-    Процессор для документов Microsoft Word (.docx).
-    
-    Использует библиотеку python-docx для работы с документами.
-    Поддерживает сохранение форматирования при разбиении и сборке.
-    
-    Parameters
-    ----------
-    max_chars : int, default=4000
-        Максимальное количество символов в одном чанке.
-    
-    Examples
-    --------
-    >>> processor = WordDocumentProcessor(max_chars=2000)
-    >>> chunks = processor.chunk("document.docx")
-    >>> print(f"Создано {len(chunks)} чанков")
-    
-    >>> # После перевода
-    >>> processor.concatenate(translated_chunks, "output.docx")
-    """
-    
     def get_supported_extensions(self) -> list[str]:
-        """
-        Получить список поддерживаемых расширений.
-        
-        Returns
-        -------
-        list[str]
-            Возвращает ['.docx'].
-        """
         return [".docx"]
 
     def load(self, path: str | Path) -> DocumentType:
-        """
-        Загрузить документ Word.
-        
-        Parameters
-        ----------
-        path : str or Path
-            Путь к .docx файлу.
-        
-        Returns
-        -------
-        Document
-            Объект документа python-docx.
-        """
         return Document(str(path))
 
     def save(self, document: DocumentType, path: str | Path) -> None:
-        """
-        Сохранить документ Word.
-        
-        Parameters
-        ----------
-        document : Document
-            Объект документа python-docx.
-        path : str or Path
-            Путь для сохранения.
-        """
         document.save(str(path))
 
     def _extract_paragraph_metadata(self, paragraph: Paragraph) -> ElementMetadata:
@@ -131,33 +79,6 @@ class WordDocumentProcessor(DocumentProcessor):
                 yield Table(child, document)
 
     def chunk(self, path: str | Path) -> list[Chunk]:
-        """
-        Разбить документ Word на чанки.
-        
-        Parameters
-        ----------
-        path : str or Path
-            Путь к .docx файлу.
-        
-        Returns
-        -------
-        list[Chunk]
-            Список чанков с текстом и метаданными.
-        
-        Notes
-        -----
-        - Итерирует по параграфам и таблицам в порядке появления
-        - Группирует элементы пока не достигнет max_chars
-        - Таблицы не разрываются — идут целиком в один чанк
-        - Если таблица превышает max_chars, выдаётся предупреждение
-        
-        Examples
-        --------
-        >>> processor = WordDocumentProcessor(max_chars=2000)
-        >>> chunks = processor.chunk("document.docx")
-        >>> for chunk in chunks:
-        ...     print(f"Чанк {chunk.index}: {chunk.char_count} символов")
-        """
         document = self.load(path)
         chunks: list[Chunk] = []
 
@@ -240,28 +161,6 @@ class WordDocumentProcessor(DocumentProcessor):
         translated_chunks: list[TranslatedChunk],
         output_path: str | Path,
     ) -> None:
-        """
-        Собрать переведённые чанки обратно в документ Word.
-        
-        Parameters
-        ----------
-        translated_chunks : list[TranslatedChunk]
-            Список переведённых чанков (должны быть отсортированы по index).
-        output_path : str or Path
-            Путь для сохранения результата (.docx).
-        
-        Raises
-        ------
-        ValueError
-            Если список чанков пуст.
-        
-        Examples
-        --------
-        >>> processor = WordDocumentProcessor()
-        >>> chunks = processor.chunk("input.docx")
-        >>> translated = translator.translate_batch(chunks, "English")
-        >>> processor.concatenate(translated, "output.docx")
-        """
         if not translated_chunks:
             raise ValueError("Список переведённых чанков пуст")
 
