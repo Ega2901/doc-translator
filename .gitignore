@@ -19,6 +19,7 @@ wheels/
 .env
 .env.local
 *.key
+*.ipynb
 
 # Confidential documents (examples contain sample clinical/regulatory docs)
 examples/*.docx
