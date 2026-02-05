@@ -1,3 +1,5 @@
+import copy
+import re
 import warnings
 from pathlib import Path
 from typing import Any
@@ -215,19 +217,28 @@ class WordDocumentProcessor(DocumentProcessor):
                     line_idx += 1
 
                     table_text = table_text.replace("[ТАБЛИЦА]", "").replace("[/ТАБЛИЦА]", "").strip()
-                    rows_data = [line.split(" | ") for line in table_text.split("\n") if line.strip()]
+                    # Разбор строк таблицы: допускаем " | ", "|", " |" и т.д.
+                    rows_data = [
+                        [s.strip() for s in re.split(r"\s*\|\s*", line)]
+                        for line in table_text.split("\n")
+                        if line.strip()
+                    ]
+                    flat_cells = [c for row in rows_data for c in row]
 
-                    if rows_data and metadata:
-                        num_rows = len(rows_data)
-                        num_cols = max(len(row) for row in rows_data) if rows_data else 1
+                    tbl_element = chunk.original_elements[i][1]
+                    cloned_tbl = copy.deepcopy(tbl_element)
+                    new_doc.element.body.append(cloned_tbl)
+                    table = Table(cloned_tbl, new_doc)
 
-                        table = new_doc.add_table(rows=num_rows, cols=num_cols)
-                        table.style = "Table Grid"
-
-                        for row_idx, row_data in enumerate(rows_data):
-                            for col_idx, cell_text in enumerate(row_data):
-                                if col_idx < num_cols:
-                                    table.rows[row_idx].cells[col_idx].text = cell_text.strip()
+                    cell_list = []
+                    for row in table.rows:
+                        for cell in row.cells:
+                            cell_list.append(cell)
+                    for idx, cell in enumerate(cell_list):
+                        if idx < len(flat_cells):
+                            cell.text = flat_cells[idx]
+                        else:
+                            cell.text = ""
 
         self.save(new_doc, output_path)
 
