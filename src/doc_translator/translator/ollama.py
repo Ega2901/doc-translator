@@ -111,6 +111,7 @@ Translate ONLY the natural language text to the target language. You MUST:
         system_prompt: str | None = None,
         *,
         use_markdown_prompt: bool = False,
+        options: dict | None = None,
     ) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
@@ -121,6 +122,7 @@ Translate ONLY the natural language text to the target language. You MUST:
             self.system_prompt = self.MARKDOWN_SYSTEM_PROMPT
         else:
             self.system_prompt = self.DEFAULT_SYSTEM_PROMPT
+        self.options = dict(options) if options else {}
         self._client = httpx.Client(timeout=timeout)
 
     def _build_prompt(self, text: str, target_language: str) -> str:
@@ -145,6 +147,8 @@ TRANSLATION:"""
             "system": self.system_prompt,
             "stream": progress_callback is not None,
         }
+        if self.options:
+            payload["options"] = self.options
 
         url = f"{self.base_url}/api/generate"
 
