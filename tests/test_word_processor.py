@@ -2,7 +2,6 @@
 
 import tempfile
 from pathlib import Path
-
 import pytest
 
 from doc_translator.processors.word import WordDocumentProcessor
@@ -93,6 +92,55 @@ class TestWordDocumentProcessor:
             processor.concatenate(translated, output_path)
             assert output_path.exists()
             assert output_path.stat().st_size > 0
+        finally:
+            output_path.unlink(missing_ok=True)
+
+    @pytest.mark.skipif(not TEST_DOC.exists(), reason="Тестовый документ не найден")
+    def test_concatenate_table_split_by_blank_lines(self):
+        """Таблица, разбитая в переводе на несколько блоков (\\n\\n), собирается целиком."""
+        processor = WordDocumentProcessor(max_chars=4000)
+        chunks = processor.chunk(TEST_DOC)
+        # Берём чанк, в котором есть таблица
+        chunk_with_table = next(
+            (c for c in chunks if any(el[0] == "table" for el in c.original_elements)),
+            None,
+        )
+        if chunk_with_table is None:
+            pytest.skip("В тестовом документе нет таблиц")
+        # Имитируем перевод, где модель вставила пустую строку внутри таблицы
+        # (в реальности блоки разделяются по \n\n)
+        parts = chunk_with_table.text.split("\n\n")
+        # Находим блок с [ТАБЛИЦА] и искусственно разбиваем его на два
+        new_parts = []
+        for part in parts:
+            if "[ТАБЛИЦА]" in part and "[/ТАБЛИЦА]" in part:
+                before, rest = part.split("[/ТАБЛИЦА]", 1)
+                first_rows, _, rest_rows = before.partition("\n")
+                if rest_rows:
+                    # Разбиваем таблицу на два блока (как если бы модель вставила \n\n)
+                    new_parts.append(before.split("\n", 1)[0] + "\n" + rest_rows.split("\n", 1)[0])
+                    new_parts.append("\n".join(rest_rows.split("\n")[1:]) + "\n[/ТАБЛИЦА]" + rest)
+                else:
+                    new_parts.append(part)
+            else:
+                new_parts.append(part)
+        translated_text_with_split_table = "\n\n".join(new_parts)
+        translated = [
+            TranslatedChunk(
+                original=chunk_with_table,
+                translated_text=translated_text_with_split_table,
+                target_language="English",
+                model_used="test",
+            )
+        ]
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+            output_path = Path(f.name)
+        try:
+            processor.concatenate(translated, output_path)
+            assert output_path.exists()
+            doc = processor.load(output_path)
+            tables = [t for t in doc.element.body.iterchildren() if "tbl" in (t.tag or "")]
+            assert len(tables) >= 1, "В выходном документе должна быть хотя бы одна таблица"
         finally:
             output_path.unlink(missing_ok=True)
 

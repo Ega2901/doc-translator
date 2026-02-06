@@ -50,19 +50,26 @@ def _is_table_line(line: str) -> bool:
 
 
 def _remove_blank_lines_inside_tables(text: str) -> str:
+    """Удаляет пустые строки внутри таблиц (между строками с | или внутри [ТАБЛИЦА]...[/ТАБЛИЦА])."""
     if not text.strip():
         return text
     lines = text.split("\n")
     result: list[str] = []
+    in_table_block = False
     for i, line in enumerate(lines):
-        if line.strip() == "" and result:
+        stripped = line.strip()
+        if "[ТАБЛИЦА]" in stripped:
+            in_table_block = True
+        if stripped == "" and in_table_block:
+            continue
+        if stripped == "" and result:
             prev_ok = _is_table_line(result[-1])
-            next_ok = (
-                i + 1 < len(lines) and _is_table_line(lines[i + 1])
-            )
+            next_ok = i + 1 < len(lines) and _is_table_line(lines[i + 1])
             if prev_ok and next_ok:
                 continue
         result.append(line)
+        if "[/ТАБЛИЦА]" in stripped:
+            in_table_block = False
     return "\n".join(result)
 
 

@@ -213,11 +213,32 @@ class WordDocumentProcessor(DocumentProcessor):
                             run.font.size = int(metadata.font_size * 12700)
 
                 elif elem_type == "table":
-                    table_text = translated_lines[line_idx]
-                    line_idx += 1
+                    # Собираем все блоки, относящиеся к этой таблице (модель могла вставить \n\n внутри)
+                    table_blocks: list[str] = []
+                    expected_rows = metadata.rows if metadata else None
+                    first_block = None
+
+                    while line_idx < len(translated_lines):
+                        block = translated_lines[line_idx]
+                        if first_block is None:
+                            first_block = block
+                        table_blocks.append(block)
+                        line_idx += 1
+                        combined = "\n".join(table_blocks)
+                        if "[/ТАБЛИЦА]" in combined:
+                            break
+                        if expected_rows is not None:
+                            raw = combined.replace("[ТАБЛИЦА]", "").replace("[/ТАБЛИЦА]", "").strip()
+                            lines = [ln for ln in raw.split("\n") if ln.strip()]
+                            if len(lines) >= expected_rows:
+                                break
+                        # Таблица без маркеров: один блок = одна таблица, не тянем следующие
+                        if "[ТАБЛИЦА]" not in (first_block or "") and "[ТАБЛИЦА]" not in combined:
+                            break
+                    table_text = "\n".join(table_blocks)
 
                     table_text = table_text.replace("[ТАБЛИЦА]", "").replace("[/ТАБЛИЦА]", "").strip()
-                    # Разбор строк таблицы: допускаем " | ", "|", " |" и т.д.
+                    # Разбор строк таблицы: допускаем " | ", "|", " |" и т.д.; пустые строки пропускаем
                     rows_data = [
                         [s.strip() for s in re.split(r"\s*\|\s*", line)]
                         for line in table_text.split("\n")
